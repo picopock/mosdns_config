@@ -1,0 +1,4 @@
+keyword:qq.com
+domain:qq.com
+keyword:adobe
+domain:adobe.com

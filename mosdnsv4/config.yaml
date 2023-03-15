@@ -1,0 +1,366 @@
+log:
+  level: info
+  file: ''
+
+# 从其他配置文件载入 include，数据源，插件和服务器设置
+# include 的设置会比本配置文件中的设置先被初始化
+include: []
+
+# 数据源设置
+data_providers:
+  - tag: geoIP
+    file: './geoip.dat'
+    auto_reload: true
+
+  - tag: geoSite
+    file: './geosite.dat'
+    auto_reload: true
+
+  - tag: proxy
+    file: './rules/proxy.txt'
+    auto_reload: true
+
+  - tag: direct
+    file: './rules/direct.txt'
+    auto_reload: true
+
+  - tag: host
+    file: './rules/host.txt'
+    auto_reload: true
+
+  - tag: block
+    file: './rules/block.txt'
+    auto_reload: true
+
+  - tag: redirect
+    file: './rules/redirect.txt'
+    auto_reload: true
+
+plugins:
+  ################ 匹配器插件 #################
+  - tag: queryIsDirectDomain
+    type: query_matcher
+    args:
+      domain:
+        - 'provider:direct'
+
+  - tag: queryIsProxyDomain
+    type: query_matcher
+    args:
+      domain:
+        - 'provider:proxy'
+
+  - tag: queryIsBlockDomain
+    type: query_matcher
+    args:
+      domain:
+        - 'provider:block'
+
+  # 匹配 hosts
+  - tag: queryIsHostDomain
+    type: hosts
+    args:
+      hosts:
+        - 'provider:host'
+
+  # 匹配 redirect domain
+  - tag: queryIsRedirectDomain
+    type: redirect
+    args:
+      rule:
+        - 'provider:redirect'
+
+  # 匹配本地域名的插件
+  - tag: queryIsAppleCNDomain
+    type: query_matcher
+    args:
+      domain:
+        - 'provider:geoSite:apple-cn'
+
+  # 匹配本地域名的插件
+  - tag: queryIsCNDomain
+    type: query_matcher
+    args:
+      domain:
+        - 'provider:geoSite:cn'
+
+  # 匹配非本地域名的插件
+  - tag: queryIsNotCNDomain
+    type: query_matcher
+    args:
+      domain:
+        - 'provider:geoSite:geolocation-!cn'
+
+  # 匹配广告域名的插件
+  - tag: queryIsADDomain
+    type: query_matcher
+    args:
+      domain:
+        - 'provider:geoSite:category-ads-all'
+
+  # 匹配本地 IP 的插件
+  - tag: responseHasCNIP
+    type: response_matcher
+    args:
+      ip:
+        - 'provider:geoIP:cn'
+
+  ################ 主流程 #################
+
+  - tag: ali
+    type: forward
+    args:
+      upstream:
+        - addr: https://dns.alidns.com/dns-query
+          ip_addr: # 当服务器地址为域名时，手动指定服务器的 IP 地址。可以配置多个。如果配置了，则不会使用 bootstrap 服务器。
+            - 223.5.5.5
+            - 223.6.6.6
+            - 2400:3200::1
+            - 2400:3200:baba::1
+          trusted: true # 是否是可信服务器
+        - addr: tls://dns.alidns.com # 服务器地址
+          ip_addr: # 手动指定服务器的 IP 地址 可以配置多个
+            - 223.5.5.5
+            - 223.6.6.6
+            - 2400:3200::1
+            - 2400:3200:baba::1
+          trusted: true # 是否是可信服务器
+
+  - tag: DNSPod
+    type: forward
+    args:
+      upstream:
+        - addr: https://doh.pub/dns-query
+          ip_addr: # 当服务器地址为域名时，手动指定服务器的 IP 地址。可以配置多个。如果配置了，则不会使用 bootstrap 服务器。
+            - 1.12.12.12
+            - 120.53.53.53
+          trusted: true # 是否是可信服务器
+        - addr: tls://dot.pub # 服务器地址
+          ip_addr: # 手动指定服务器的 IP 地址 可以配置多个
+            - 1.12.12.12
+            - 120.53.53.53
+          trusted: true # 是否是可信服务器
+
+  - tag: google
+    type: forward
+    args:
+      upstream:
+        - addr: https://dns.google/dns-query # 必需。服务器地址
+          ip_addr: # 当服务器地址为域名时，手动指定服务器的 IP 地址。可以配置多个。如果配置了，则不会使用 bootstrap 服务器。
+            - 8.8.4.4
+            - 8.8.8.8
+            - 2001:4860:4860::8844
+            - 2001:4860:4860::8888
+          trusted: true # 是否是可信服务器。mosdns 的移植功能，说明详见 `fast_forward` 插件。
+
+  - tag: cloudflare
+    type: forward
+    args:
+      upstream:
+        - addr: https://cloudflare-dns.com/dns-query
+          ip_addr:
+            - 1.0.0.1
+            - 1.1.1.1
+            - 2606:4700:4700::1001
+            - 2606:4700:4700::1111
+          trusted: true
+
+  - tag: googleDot
+    type: fast_forward
+    args:
+      upstream:
+        - addr: tls://dns.google
+          dial_addr: 8.8.4.4
+          trusted: true
+          enable_pipeline: true
+        - addr: tls://dns.google
+          dial_addr: 8.8.8.8
+          trusted: true
+          enable_pipeline: true
+        - addr: tls://dns.google
+          dial_addr: 2001:4860:4860::8844
+          trusted: true
+          enable_pipeline: true
+        - addr: tls://dns.google
+          dial_addr: 2001:4860:4860::8888
+          trusted: true
+          enable_pipeline: true
+
+  - tag: cloudflareDot
+    type: fast_forward
+    args:
+      upstream:
+        - addr: tls://1dot1dot1dot1.cloudflare-dns.com
+          dial_addr: 1.0.0.1
+          trusted: true
+          enable_pipeline: true
+        - addr: tls://1dot1dot1dot1.cloudflare-dns.com
+          dial_addr: 1.1.1.1
+          trusted: true
+          enable_pipeline: true
+        - addr: tls://1dot1dot1dot1.cloudflare-dns.com
+          dial_addr: 2606:4700:4700::1001
+          trusted: true
+          enable_pipeline: true
+        - addr: tls://1dot1dot1dot1.cloudflare-dns.com
+          dial_addr: 2606:4700:4700::1111
+          trusted: true
+          enable_pipeline: true
+
+  - tag: googleH3
+    type: fast_forward
+    args:
+      # 上游服务器。至少要配置一个。可配置多个，会并发请求全部服务器。
+      upstream:
+        - addr: https://dns.google/dns-query
+          dial_addr: 8.8.4.4
+          trusted: true
+          enable_http3: true
+        - addr: https://dns.google/dns-query
+          dial_addr: 8.8.8.8
+          trusted: true
+          enable_http3: true
+        - addr: https://dns.google/dns-query
+          dial_addr: 2001:4860:4860::8844
+          trusted: true
+          enable_http3: true
+        - addr: https://dns.google/dns-query
+          dial_addr: 2001:4860:4860::8888
+          trusted: true
+          enable_http3: true
+
+  - tag: cloudflareH3
+    type: fast_forward
+    args:
+      upstream:
+        - addr: https://cloudflare-dns.com/dns-query
+          dial_addr: 1.0.0.1
+          trusted: true
+          enable_http3: true
+        - addr: https://cloudflare-dns.com/dns-query
+          dial_addr: 1.1.1.1
+          trusted: true
+          enable_http3: true
+        - addr: https://cloudflare-dns.com/dns-query
+          dial_addr: 2606:4700:4700::1001
+          trusted: true
+          enable_http3: true
+        - addr: https://cloudflare-dns.com/dns-query
+          dial_addr: 2606:4700:4700::1111
+          trusted: true
+          enable_http3: true
+
+  # 转发请求至本地服务器的插件
+  - tag: forwardLocal
+    type: sequence
+    args:
+      exec:
+        - parallel:
+            - - ali
+            - - DNSPod
+
+  # 转发请求至远程服务器的插件
+  - tag: forwardRemote
+    type: sequence
+    args:
+      exec:
+        - parallel: # 并行
+            - - google
+            - - cloudflare
+            - - googleDot
+            - - cloudflareDot
+            - - googleH3
+            - - cloudflareH3
+
+  # 包含分流的逻辑的插件
+  - tag: mainSequence
+    type: sequence
+    args:
+      exec:
+        - queryIsRedirectDomain
+
+        - queryIsHostDomain
+
+#        - if: 'queryIsBlockDomain || queryIsADDomain' # 已知的广告域名
+        - if: queryIsBlockDomain # 已知的广告域名
+          exec:
+            - _new_nxdomain_response # 生成 NXDOMAIN 应答
+            - _return # 立刻返回 (结束本序列)
+
+        - if: queryIsDirectDomain || queryIsAppleCNDomain || queryIsCNDomain
+          exec:
+            - _pad_query # 填充到固定长度
+#            - _prefer_ipv4 # 优先 IPv4
+            - forwardLocal
+            - _return
+
+        - if: queryIsProxyDomain || queryIsNotCNDomain
+          exec:
+            - _pad_query # 填充到固定长度
+#            - _prefer_ipv4 # 优先 IPv4
+            - forwardRemote
+            - _return
+
+        # 剩下的未知域名用 IP 分流。详细分流原理请参考 `fallback` 的工作流程。
+        - primary:
+            - _pad_query
+#            - _prefer_ipv4
+            - forwardRemote
+          secondary:
+            - _pad_query
+#            - _prefer_ipv4
+            - forwardLocal
+            - if: '(!responseHasCNIP) && [_response_valid_answer]'
+              exec:
+                - _drop_response
+          stat_length: 10 # 常规 fallback 统计长度。默认 0，禁用常规 fallback。可省略。
+          threshold: 5 # 常规 fallback 触发阈值。不可大于统计长度。默认 0。可省略。
+          fast_fallback: 200 # # 快速 fallback 触发阈值。单位: 毫秒。默认: 0，禁用快速 fallback。可省略。
+          always_standby: true # 快速 fallback secondary 始终待命。可省略。
+
+  # 修改应答 ttl
+  - tag: modifyTTL
+    type: ttl
+    args:
+      minimal_ttl: 300
+      maximum_ttl: 3600
+
+  # IP 反查域名
+  - tag: PTR
+    type: reverse_lookup
+    args:
+      size: 65535 # 内置缓存大小
+      ttl: 1800 #缓存时间。秒。默认 1800 (30min)。应答记录的 TTL 也会被自动修改，限制在该值以下。
+      handle_ptr: true # 是否主动处理/响应 PTR 请求。如果 PTR 的 IP 命中缓存，则生成应答后自动 _return，跳过后续插件运行。没有命中缓存则不会主动响应。会继续传递给后续插件。
+
+  # 缓存
+  - tag: memCache
+    type: cache
+    args:
+      size: 4096 # 条目数量
+      lazy_cache_ttl: 86400 # lazy cache 生存时间 一天
+
+  - tag: entry
+    type: sequence
+    args:
+      exec:
+        - _misc_optm
+        - PTR # ip 反差域名
+        # - _query_summary
+        - memCache # 启用缓存
+        - mainSequence # 运行主执行序列
+        - modifyTTL # 修改 ttl
+
+# 服务器设置
+servers:
+  - exec: entry # 本服务器运行插件的 tag。
+    timeout: 5 # 请求处理超时时间。单位: 秒。默认: 5。
+    listeners: # 监听设置
+      - protocol: udp
+        addr: ':53'
+      - protocol: tcp
+        addr: ':53'
+
+# API 入口设置
+api:
+  http: ':8080'

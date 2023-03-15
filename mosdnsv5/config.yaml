@@ -1,0 +1,200 @@
+log:
+  level: debug # 日志级别。可选 "debug" "info" "warn" "error"。默认 "info"。
+  file: '' # 记录日志到文件。默认输出至 stderr。
+  production: true # 纯 json 输出。
+
+# API 入口设置
+api:
+  http: ':8080' # 在该地址启动 api 接口。
+
+# []string, 从其他配置文件载入 plugins 插件设置。
+# include 的插件会比本配置文件中的插件先初始化。
+include: []
+
+plugins:
+  - tag: direct_domain
+    type: domain_set
+    args:
+      # exps:                         # 域名表达式。
+      #   - "qq.com"
+      files:
+        - ./custom_rules/direct.txt
+
+  - tag: proxy_domain
+    type: domain_set
+    args:
+      files:
+        - ./custom_rules/proxy.txt
+
+  - tag: block_domain
+    type: domain_set
+    args:
+      files:
+        - ./custom_rules/block.txt
+
+  - tag: host_domain
+    type: hosts
+    args:
+      # entries:                         # []string
+      # - "google.com 108.177.122.113"   # 记录
+      files:
+        - ./custom_rules/host.txt
+
+  - tag: redirect_domain
+    type: redirect
+    args:
+      # rules:
+      # # 格式 [域名匹配规则] [重定向至域名]
+      # - a.com b.com
+      files:
+        - ./custom_rules/redirect.txt
+
+  - tag: cn_domain
+    type: domain_set
+    args:
+      files:
+        - ./online_rules/direct_list.txt
+        - ./online_rules/apple_cn.txt
+        - ./online_rules/google_cn.txt
+
+  - tag: not_cn_domain
+    type: domain_set
+    args:
+      files:
+        - ./online_rules/proxy_list.txt
+        - ./online_rules/gfw.txt
+        - ./online_rules/greatfire.txt
+
+  - tag: ads_domain
+    type: domain_set
+    args:
+      files:
+        - ./online_rules/reject_list.txt
+
+  - tag: forward_local
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - tag: ali
+          # addr: https://dns.alidns.com/dns-query
+          addr: https://223.5.5.5/dns-query
+          # dial_addr: 223.5.5.5
+        - tag: DNSPod
+          # addr: https://doh.pub/dns-query
+          addr: https://120.53.53.53/dns-query
+          # dial_addr: 120.53.53.53
+
+  - tag: forward_remote
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - tag: google
+          # addr: https://dns.google/dns-query
+          addr: https://8.8.8.8/dns-query
+          # dial_addr: 8.8.8.8
+        - tag: cloudflare
+          # addr: https://cloudflare-dns.com/dns-query
+          addr: https://1.1.1.1/dns-query
+          # dial_addr: 1.1.1.1
+
+  - tag: fallback_query
+    type: fallback
+    args:
+      primary: forward_local # 主可执行插件的 tag
+      secondary: forward_remote # 副可执行插件的 tag
+      threshold: 500 # 无响应回滚阈值。单位毫秒。默认 500 。
+      always_standby: true # 副可执行插件始终待命。
+
+  - tag: mem_cache
+    type: cache
+    args:
+      size: 4096 # 内置内存缓存大小。单位: 条。默认: 1024。每个 cache 插件的内存缓存是独立的。
+      # lazy cache 设定。lazy_cache_ttl > 0 会启用 lazy cache。
+      # 所有应答都会在缓存中存留 lazy_cache_ttl 秒，但自身的 TTL 仍然有效。如果命中过期的应答，
+      # 则缓存会立即返回 TTL 为 5 的应答，然后自动在后台发送请求更新数据。
+      # 相比强行增加应答自身的 TTL 的方法，lazy cache 能提高命中率，同时还能保持一定的数据新鲜度。
+      lazy_cache_ttl: 0
+      # lazy cache 生存时间。单位: 秒。默认: 0 (禁用 lazy cache)。
+      # 建议值 86400（1天）~ 259200（3天）
+
+  - tag: main_sequence
+    type: sequence
+    args:
+      - matches:
+          - qtype 12 # PTR
+        exec: reject 0 # DNS-Rcode
+
+      # - exec: prefer_ipv4
+
+      - matches:
+          - '!qname ddns.doamin.com'
+        exec: $mem_cache
+      - matches:
+          - has_resp
+        exec: accept
+
+      - exec: $redirect_domain
+      - matches:
+          - has_resp
+        exec: accept
+
+      - exec: $host_domain
+      - matches:
+          - has_resp
+        exec: accept
+
+      - matches:
+          - qname $direct_domain
+        exec: $forward_local
+      - matches:
+          - has_resp
+        exec: accept
+
+      - matches:
+          - qname $proxy_domain
+        exec: $forward_remote
+      - matches:
+          - has_resp
+        exec: accept
+
+      - matches:
+          - qname $block_domain $ads_domain
+        exec: reject 3 # 执行 直接返回 NXDOMAIN(3) 屏蔽。
+
+      - matches:
+          - qname $cn_domain
+        exec: $forward_local
+      - matches:
+          - has_resp
+        exec: accept
+
+      - matches:
+          - qname $not_cn_domain
+        exec: $forward_remote
+      - matches:
+          - has_resp
+        exec: accept
+
+      # 其他未命中域名处理逻辑，根据返回的IP位置转发到相应的DNS上游进行解析
+      - exec: $fallback_query
+      - matches:
+          - '!has_resp'
+        exec: drop_resp
+
+      # sequence 结束(被 reject，accept，或者运行到末尾)后就会返回调用者。在这个配置文件中
+      # 调用者是下面的服务器。服务器就会返回应答至客户端。
+
+  # 启动 udp 和 tcp 服务器。
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: main_sequence # 收到的请求会执行上面的逻辑
+      listen: ':53'
+
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: main_sequence
+      listen: ':53'
