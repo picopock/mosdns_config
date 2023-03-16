@@ -80,6 +80,7 @@ Mosdns config and auto update shell script.
 ├── config.yaml                   # main config
 ├── custom_rules                  # user custon rule, has higher priority
 │   ├── block.txt                 # block rule
+│   ├── ddns.txt                  # ddns rule, not cache if match
 │   ├── direct.txt                # forward local rule
 │   ├── host.txt                  # host rule
 │   ├── proxy.txt                 # forward remote rule

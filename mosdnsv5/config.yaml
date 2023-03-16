@@ -1,5 +1,5 @@
 log:
-  level: debug # 日志级别。可选 "debug" "info" "warn" "error"。默认 "info"。
+  level: info # 日志级别。可选 "debug" "info" "warn" "error"。默认 "info"。
   file: '' # 记录日志到文件。默认输出至 stderr。
   production: true # 纯 json 输出。
 
@@ -12,6 +12,14 @@ api:
 include: []
 
 plugins:
+  - tag: ddns_domain
+    type: domain_set
+    args:
+      # exps:                                   # 域名表达式。
+      #   - "qq.com"
+      files:
+        - ./custom_rules/ddns.txt
+
   - tag: direct_domain
     type: domain_set
     args:
@@ -129,7 +137,7 @@ plugins:
       # - exec: prefer_ipv4
 
       - matches:
-          - '!qname ddns.doamin.com'
+          - '!qname $ddns_domain'
         exec: $mem_cache
       - matches:
           - has_resp
