@@ -1,0 +1,33 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Get Version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
+
+      - name: Package files
+        run: |
+          mkdir mosdns-config-${{ steps.get_version.outputs.VERSION }}
+          tar -zcvf mosdns-config-${{ steps.get_version.outputs.VERSION }}.tar.gz ./mosdnsv4 ./mosdnsv5 ./README.md
+          zip -r mosdns-config-${{ steps.get_version.outputs.VERSION }}.zip ./mosdnsv4 ./mosdnsv5 ./README.md
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ./mosdns-config-*
+          draft: false
